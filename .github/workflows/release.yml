@@ -25,9 +25,13 @@ jobs:
       # pnpm version is taken from the packageManager field in package.json.
       - uses: pnpm/action-setup@v4
 
+      # Node 24 ships npm 11.x. npm >= 11.5.1 implements the OIDC token
+      # exchange flow required by npm trusted publishing. pnpm's --provenance
+      # signs the statement but does not exchange OIDC for an npm token, so
+      # we install with pnpm and publish with npm.
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '24'
           registry-url: 'https://registry.npmjs.org'
           cache: 'pnpm'
 
@@ -40,12 +44,13 @@ jobs:
       - run: node scripts/attw.mjs
       - run: pnpm size
 
-      # OIDC trusted publishing: pnpm picks up the OIDC token from the
-      # GitHub Actions env (made available by id-token: write) and the
-      # registry validates it against the trusted publisher config for
-      # this package. Provenance attestation is attached.
+      # OIDC trusted publishing: npm fetches the OIDC token from the GitHub
+      # Actions env (made available by id-token: write), exchanges it for a
+      # short-lived registry token, and the registry validates against the
+      # trusted publisher config for this package. Provenance attestation is
+      # attached.
       - uses: changesets/action@v1
         with:
-          publish: pnpm publish --provenance --access public --no-git-checks
+          publish: npm publish --provenance --access public
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
