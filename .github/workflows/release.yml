@@ -1,0 +1,51 @@
+name: release
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+  id-token: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    environment: npm-publish
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # pnpm version is taken from the packageManager field in package.json.
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+          cache: 'pnpm'
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+      - run: pnpm exec publint
+      - run: node scripts/attw.mjs
+      - run: pnpm size
+
+      # OIDC trusted publishing: pnpm picks up the OIDC token from the
+      # GitHub Actions env (made available by id-token: write) and the
+      # registry validates it against the trusted publisher config for
+      # this package. Provenance attestation is attached.
+      - uses: changesets/action@v1
+        with:
+          publish: pnpm publish --provenance --access public --no-git-checks
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
