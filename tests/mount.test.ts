@@ -296,6 +296,100 @@ describe('autoload:false buffer-vs-boot contract', () => {
   });
 });
 
+describe('reset() then user.identify() back-to-back', () => {
+  it('buffers identify until the post-reset ready event, then drains it', () => {
+    const handle = mount({ widgetId: 'aaaaaaaaaaaaaaaa' });
+    const script = document.querySelector<HTMLScriptElement>('script[src*="/widget/widget.js"]')!;
+    const loader = installLoaderProxy();
+    script.dispatchEvent(new Event('load'));
+
+    // Clear pre-boot drain noise; only the post-script calls matter.
+    loader._queue.length = 0;
+
+    handle.reset();
+    handle.user.identify({ email: 'alice@example.com', userHash: 'a'.repeat(64) });
+
+    // The reset() registers a 'ready' listener and dispatches 'reset'.
+    // The identify must be held — nothing tagged 'identify' in the queue yet.
+    expect(loader._queue.some((c) => c.method === 'identify')).toBe(false);
+    expect(loader._queue.some((c) => c.method === 'reset')).toBe(true);
+    const onReadyCall = loader._queue.find(
+      (c) => c.method === 'on' && (c.args as unknown[])[0] === 'ready',
+    );
+    expect(onReadyCall).toBeDefined();
+
+    // Fire the post-reset 'ready' callback the SDK registered.
+    const cb = (onReadyCall!.args as unknown[])[1] as () => void;
+    cb();
+
+    // Now identify reaches the runtime with the buffered payload.
+    const identifyCall = loader._queue.find((c) => c.method === 'identify');
+    expect(identifyCall).toBeDefined();
+    const payload = (identifyCall!.args as unknown[])[0] as { email: string; userHash: string };
+    expect(payload.email).toBe('alice@example.com');
+    expect(payload.userHash).toBe('a'.repeat(64));
+  });
+
+  it('merges multiple identify calls during the reset window into one drained payload', () => {
+    const handle = mount({ widgetId: 'aaaaaaaaaaaaaaaa' });
+    const script = document.querySelector<HTMLScriptElement>('script[src*="/widget/widget.js"]')!;
+    const loader = installLoaderProxy();
+    script.dispatchEvent(new Event('load'));
+    loader._queue.length = 0;
+
+    handle.reset();
+    handle.user.identify({ email: 'alice@example.com' });
+    handle.user.identify({ userHash: 'a'.repeat(64) });
+    handle.user.identify({ displayName: 'Alice' });
+
+    expect(loader._queue.some((c) => c.method === 'identify')).toBe(false);
+
+    const onReadyCall = loader._queue.find(
+      (c) => c.method === 'on' && (c.args as unknown[])[0] === 'ready',
+    );
+    const cb = (onReadyCall!.args as unknown[])[1] as () => void;
+    cb();
+
+    const identifyCalls = loader._queue.filter((c) => c.method === 'identify');
+    expect(identifyCalls).toHaveLength(1);
+    const payload = (identifyCalls[0].args as unknown[])[0] as {
+      email: string;
+      userHash: string;
+      displayName: string;
+    };
+    expect(payload.email).toBe('alice@example.com');
+    expect(payload.userHash).toBe('a'.repeat(64));
+    expect(payload.displayName).toBe('Alice');
+  });
+
+  it('clears the resetting gate on destroy so a stuck reset does not block forever', () => {
+    const handle = mount({ widgetId: 'aaaaaaaaaaaaaaaa' });
+    const script = document.querySelector<HTMLScriptElement>('script[src*="/widget/widget.js"]')!;
+    const loader = installLoaderProxy();
+    script.dispatchEvent(new Event('load'));
+    loader._queue.length = 0;
+
+    handle.reset();
+    handle.user.identify({ email: 'alice@example.com' });
+    handle.destroy();
+
+    // Post-destroy, a re-mounted handle should not see leftover buffered state.
+    __resetMountForTests();
+    const reloaded = mount({ widgetId: 'aaaaaaaaaaaaaaaa' });
+    const script2 = document.querySelector<HTMLScriptElement>('script[src*="/widget/widget.js"]')!;
+    const loader2 = installLoaderProxy();
+    script2.dispatchEvent(new Event('load'));
+    loader2._queue.length = 0;
+
+    reloaded.user.identify({ email: 'bob@example.com', userHash: 'b'.repeat(64) });
+    const identifyCall = loader2._queue.find((c) => c.method === 'identify');
+    expect(identifyCall).toBeDefined();
+    expect(((identifyCall!.args as unknown[])[0] as { email: string }).email).toBe(
+      'bob@example.com',
+    );
+  });
+});
+
 describe('mount() race-free pre-boot calls', () => {
   it('does not throw when handle.chat.open() is called in the same tick as mount()', () => {
     const handle = mount({ widgetId: 'aaaaaaaaaaaaaaaa' });

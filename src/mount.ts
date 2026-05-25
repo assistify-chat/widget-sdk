@@ -86,6 +86,19 @@ interface MountState {
   currentIdentity: WidgetIdentity | null;
   /** Latest context supplied via `mount({ context })` or `context.set()`. */
   currentContext: WidgetContext | null;
+  /**
+   * True between `reset()` and the next `'ready'` event. While true,
+   * `user.identify()` buffers in `pendingPostResetIdentity` instead of firing
+   * immediately, so the identify lands against the post-reset session rather
+   * than the one currently being torn down.
+   */
+  resetting: boolean;
+  pendingPostResetIdentity: WidgetIdentity | null;
+  /**
+   * Unsubscribe for the in-flight reset's `'ready'` listener. Kept so a second
+   * `reset()` before the first ready can cancel the previous listener cleanly.
+   */
+  pendingResetUnsubscribe: (() => void) | null;
 }
 
 const state: MountState = {
@@ -100,6 +113,9 @@ const state: MountState = {
   destroyed: false,
   currentIdentity: null,
   currentContext: null,
+  resetting: false,
+  pendingPostResetIdentity: null,
+  pendingResetUnsubscribe: null,
 };
 
 const inBrowser = (): boolean =>
@@ -371,10 +387,40 @@ export function mount(opts: MountOptions): WidgetHandle {
     void loadOnce().catch(() => { /* surfaced via load() */ });
   };
 
+  /**
+   * One-shot drain fired by the post-reset `'ready'` event. Clears the
+   * resetting gate and replays any `user.identify()` calls that landed during
+   * the reset window so they hit the new session.
+   */
+  const drainPostResetIdentify = (): void => {
+    if (state.pendingResetUnsubscribe) {
+      state.pendingResetUnsubscribe();
+      state.pendingResetUnsubscribe = null;
+    }
+    state.resetting = false;
+    const pending = state.pendingPostResetIdentity;
+    state.pendingPostResetIdentity = null;
+    if (pending) {
+      state.currentIdentity = mergeIdentity(state.currentIdentity, pending);
+      dispatch('identify', [pending]);
+    }
+  };
+
   const handle: WidgetHandle = {
     load: () => loadOnce(),
     reset: () => {
       triggerBoot();
+      // Replace any previous reset's listener so chained reset() calls don't
+      // pile up.
+      if (state.pendingResetUnsubscribe) {
+        state.pendingResetUnsubscribe();
+        state.pendingResetUnsubscribe = null;
+      }
+      state.resetting = true;
+      state.pendingPostResetIdentity = null;
+      const unsubResult = dispatch('on', ['ready', drainPostResetIdentify]);
+      state.pendingResetUnsubscribe =
+        typeof unsubResult === 'function' ? (unsubResult as () => void) : null;
       dispatch('reset', []);
       // Drop any cached identity/context so the next user.identify() starts
       // from a clean slate — otherwise a shallow-merge of the new payload
@@ -385,6 +431,12 @@ export function mount(opts: MountOptions): WidgetHandle {
     destroy: () => {
       dispatch('destroy', []);
       state.destroyed = true;
+      if (state.pendingResetUnsubscribe) {
+        state.pendingResetUnsubscribe();
+        state.pendingResetUnsubscribe = null;
+      }
+      state.resetting = false;
+      state.pendingPostResetIdentity = null;
     },
     isReady: () => readIsReady(),
 
@@ -397,6 +449,15 @@ export function mount(opts: MountOptions): WidgetHandle {
     user: {
       identify: (identity) => {
         state.currentIdentity = mergeIdentity(state.currentIdentity, identity);
+        if (state.resetting) {
+          // Hold until the post-reset 'ready' event so the identify lands on
+          // the new session rather than the one being torn down.
+          state.pendingPostResetIdentity = mergeIdentity(
+            state.pendingPostResetIdentity,
+            identity,
+          );
+          return;
+        }
         // No boot trigger. The call is dispatched (= buffered pre-boot, fired
         // post-boot). Pre-boot, the next script injection also reads
         // state.currentIdentity and bakes anchors onto data-user-* attrs.
@@ -450,4 +511,7 @@ export function __resetMountForTests(): void {
   state.destroyed = false;
   state.currentIdentity = null;
   state.currentContext = null;
+  state.resetting = false;
+  state.pendingPostResetIdentity = null;
+  state.pendingResetUnsubscribe = null;
 }
