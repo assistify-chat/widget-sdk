@@ -8,9 +8,9 @@ type LoaderAssistify = {
   open: (...a: unknown[]) => void;
   close: (...a: unknown[]) => void;
   toggle: (...a: unknown[]) => void;
-  reset: (...a: unknown[]) => Promise<void>;
+  reset: (...a: unknown[]) => void;
   destroy: (...a: unknown[]) => void;
-  identify: (...a: unknown[]) => Promise<void>;
+  identify: (...a: unknown[]) => void;
   setContext: (...a: unknown[]) => void;
   clearContext: (...a: unknown[]) => void;
   on: (...a: unknown[]) => () => void;
@@ -63,18 +63,18 @@ afterEach(() => {
 
 describe('mount() script injection', () => {
   it('injects a loader script with the expected attributes', () => {
-    mount({ widgetId: 'demo' });
+    mount({ widgetId: 'aaaaaaaaaaaaaaaa' });
     const script = document.querySelector<HTMLScriptElement>('script[src*="/widget/widget.js"]');
     expect(script).not.toBeNull();
     expect(script?.async).toBe(true);
     expect(script?.src).toBe('https://assistify.chat/widget/widget.js');
-    expect(script?.getAttribute('data-widget-id')).toBe('demo');
+    expect(script?.getAttribute('data-widget-id')).toBe('aaaaaaaaaaaaaaaa');
     expect(script?.hasAttribute('data-assistify-loader')).toBe(true);
   });
 
   it('does not inject twice for the same widgetId', () => {
-    mount({ widgetId: 'demo' });
-    mount({ widgetId: 'demo' });
+    mount({ widgetId: 'aaaaaaaaaaaaaaaa' });
+    mount({ widgetId: 'aaaaaaaaaaaaaaaa' });
     const scripts = document.querySelectorAll('script[src*="/widget/widget.js"]');
     expect(scripts.length).toBe(1);
   });
@@ -82,27 +82,27 @@ describe('mount() script injection', () => {
   it('throws when mounted with a different widgetId than the legacy script on the page', () => {
     const legacy = document.createElement('script');
     legacy.src = 'https://assistify.chat/widget/widget.js';
-    legacy.setAttribute('data-widget-id', 'demo');
+    legacy.setAttribute('data-widget-id', 'aaaaaaaaaaaaaaaa');
     legacy.defer = true;
     document.body.appendChild(legacy);
 
-    expect(() => mount({ widgetId: 'other' })).toThrow(/already on the page/);
-    expect(() => mount({ widgetId: 'other' })).toThrow(/widgetId="other"/);
+    expect(() => mount({ widgetId: 'bbbbbbbbbbbbbbbb' })).toThrow(/already on the page/);
+    expect(() => mount({ widgetId: 'bbbbbbbbbbbbbbbb' })).toThrow(/widgetId="bbbbbbbbbbbbbbbb"/);
   });
 
   it('does not inject a second script when a matching legacy snippet is present', () => {
     const legacy = document.createElement('script');
     legacy.src = 'https://assistify.chat/widget/widget.js';
-    legacy.setAttribute('data-widget-id', 'demo');
+    legacy.setAttribute('data-widget-id', 'aaaaaaaaaaaaaaaa');
     legacy.defer = true;
     document.body.appendChild(legacy);
 
-    mount({ widgetId: 'demo' });
+    mount({ widgetId: 'aaaaaaaaaaaaaaaa' });
     expect(document.querySelectorAll('script[src*="/widget/widget.js"]').length).toBe(1);
   });
 
   it('honours autoload:false (no script until first call)', () => {
-    const handle = mount({ widgetId: 'demo', autoload: false });
+    const handle = mount({ widgetId: 'aaaaaaaaaaaaaaaa', autoload: false });
     expect(document.querySelector('script[src*="/widget/widget.js"]')).toBeNull();
     handle.chat.open();
     expect(document.querySelector('script[src*="/widget/widget.js"]')).not.toBeNull();
@@ -110,7 +110,7 @@ describe('mount() script injection', () => {
 
   it('writes identity to data-attrs and forwards baseUrl', () => {
     mount({
-      widgetId: 'demo',
+      widgetId: 'aaaaaaaaaaaaaaaa',
       baseUrl: 'https://example.test',
       identity: {
         email: 'a@b.c',
@@ -128,7 +128,7 @@ describe('mount() script injection', () => {
 
 describe('mount() pre-boot buffer + drain', () => {
   it('queues pre-boot calls locally and drains them through window.Assistify on script.onload', () => {
-    const handle = mount({ widgetId: 'demo' });
+    const handle = mount({ widgetId: 'aaaaaaaaaaaaaaaa' });
     handle.chat.open();
     handle.context.set({ page: { type: 'product' } });
 
@@ -142,7 +142,7 @@ describe('mount() pre-boot buffer + drain', () => {
   });
 
   it('queues context passed to mount() and replays on drain', () => {
-    mount({ widgetId: 'demo', context: { page: { path: '/home' } } });
+    mount({ widgetId: 'aaaaaaaaaaaaaaaa', context: { page: { path: '/home' } } });
     const script = document.querySelector<HTMLScriptElement>('script[src*="/widget/widget.js"]')!;
     const loader = installLoaderProxy();
     script.dispatchEvent(new Event('load'));
@@ -155,7 +155,7 @@ describe('mount() pre-boot buffer + drain', () => {
 
 describe('handle.load()', () => {
   it('rejects with an error when script.onerror fires', async () => {
-    const handle = mount({ widgetId: 'demo' });
+    const handle = mount({ widgetId: 'aaaaaaaaaaaaaaaa' });
     const loadPromise = handle.load();
     const script = document.querySelector<HTMLScriptElement>('script[src*="/widget/widget.js"]')!;
     script.dispatchEvent(new Event('error'));
@@ -163,7 +163,7 @@ describe('handle.load()', () => {
   });
 
   it('returns the same in-flight promise across parallel calls', async () => {
-    const handle = mount({ widgetId: 'demo' });
+    const handle = mount({ widgetId: 'aaaaaaaaaaaaaaaa' });
     const a = handle.load();
     const b = handle.load();
     expect(a).toBe(b);
@@ -176,7 +176,7 @@ describe('handle.load()', () => {
   it('times out after 30s when ready never fires', async () => {
     vi.useFakeTimers();
     try {
-      const handle = mount({ widgetId: 'demo' });
+      const handle = mount({ widgetId: 'aaaaaaaaaaaaaaaa' });
       const loadPromise = handle.load();
       // Attach a no-op catch so Node does not report an unhandled rejection
       // while the test is awaiting the timer to advance.
@@ -192,9 +192,113 @@ describe('handle.load()', () => {
   });
 });
 
+describe('mount() invalid-widgetId detection', () => {
+  it('logs an error when widgetId is the documentation placeholder', () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => { /* swallow */ });
+    try {
+      mount({ widgetId: 'YOUR_WIDGET_ID' });
+      const messages = spy.mock.calls.map((c) => String(c[0]));
+      expect(messages.some((m) => /placeholder widgetId/.test(m))).toBe(true);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('logs an error when widgetId is not 16 lowercase hex chars', () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => { /* swallow */ });
+    try {
+      mount({ widgetId: 'not-a-real-id' });
+      const messages = spy.mock.calls.map((c) => String(c[0]));
+      expect(messages.some((m) => /16 lowercase hex/.test(m))).toBe(true);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('does not log when widgetId matches the 16-hex format', () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => { /* swallow */ });
+    try {
+      mount({ widgetId: 'abcdef0123456789' });
+      const messages = spy.mock.calls.map((c) => String(c[0]));
+      expect(messages.some((m) => /placeholder|hex/.test(m))).toBe(false);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+});
+
+describe('autoload:false buffer-vs-boot contract', () => {
+  it('events.on() does not inject the script', () => {
+    const handle = mount({ widgetId: 'aaaaaaaaaaaaaaaa', autoload: false });
+    handle.events.on('ready', () => { /* noop */ });
+    expect(document.querySelector('script[src*="/widget/widget.js"]')).toBeNull();
+  });
+
+  it('context.set() does not inject the script', () => {
+    const handle = mount({ widgetId: 'aaaaaaaaaaaaaaaa', autoload: false });
+    handle.context.set({ page: { path: '/foo' } });
+    expect(document.querySelector('script[src*="/widget/widget.js"]')).toBeNull();
+  });
+
+  it('user.identify() does not inject the script', () => {
+    const handle = mount({ widgetId: 'aaaaaaaaaaaaaaaa', autoload: false });
+    handle.user.identify({ email: 'a@b.c', userHash: 'a'.repeat(64) });
+    expect(document.querySelector('script[src*="/widget/widget.js"]')).toBeNull();
+  });
+
+  it('identity supplied via user.identify() is baked into data-attrs when boot triggers later', () => {
+    const handle = mount({ widgetId: 'aaaaaaaaaaaaaaaa', autoload: false });
+    handle.user.identify({ email: 'a@b.c', externalId: 'ext-1', userHash: 'a'.repeat(64) });
+    handle.load().catch(() => { /* ignore — no loader installed in this test */ });
+    const script = document.querySelector<HTMLScriptElement>('script[src*="/widget/widget.js"]')!;
+    expect(script.getAttribute('data-user-email')).toBe('a@b.c');
+    expect(script.getAttribute('data-user-external-id')).toBe('ext-1');
+    expect(script.getAttribute('data-user-hash')).toBe('a'.repeat(64));
+  });
+
+  it('successive user.identify() calls merge top-level keys before script injection', () => {
+    const handle = mount({ widgetId: 'aaaaaaaaaaaaaaaa', autoload: false });
+    handle.user.identify({ email: 'a@b.c' });
+    handle.user.identify({ userHash: 'a'.repeat(64) });
+    handle.load().catch(() => { /* ignore */ });
+    const script = document.querySelector<HTMLScriptElement>('script[src*="/widget/widget.js"]')!;
+    expect(script.getAttribute('data-user-email')).toBe('a@b.c');
+    expect(script.getAttribute('data-user-hash')).toBe('a'.repeat(64));
+  });
+
+  it('chat.open() triggers boot', () => {
+    const handle = mount({ widgetId: 'aaaaaaaaaaaaaaaa', autoload: false });
+    handle.chat.open();
+    expect(document.querySelector('script[src*="/widget/widget.js"]')).not.toBeNull();
+  });
+
+  it('reset() triggers boot', () => {
+    const handle = mount({ widgetId: 'aaaaaaaaaaaaaaaa', autoload: false });
+    handle.reset();
+    expect(document.querySelector('script[src*="/widget/widget.js"]')).not.toBeNull();
+  });
+
+  it('pre-boot context.set() and user.identify() reach the runtime after script.onload', () => {
+    const handle = mount({ widgetId: 'aaaaaaaaaaaaaaaa', autoload: false });
+    handle.events.on('ready', () => { /* noop */ });
+    handle.context.set({ page: { type: 'product' } });
+    handle.user.identify({ email: 'a@b.c', userHash: 'a'.repeat(64) });
+    handle.load().catch(() => { /* ignore */ });
+
+    const script = document.querySelector<HTMLScriptElement>('script[src*="/widget/widget.js"]')!;
+    const loader = installLoaderProxy();
+    script.dispatchEvent(new Event('load'));
+
+    const methods = loader._queue.map((c) => c.method);
+    expect(methods).toContain('on');
+    expect(methods).toContain('setContext');
+    expect(methods).toContain('identify');
+  });
+});
+
 describe('mount() race-free pre-boot calls', () => {
   it('does not throw when handle.chat.open() is called in the same tick as mount()', () => {
-    const handle = mount({ widgetId: 'demo' });
+    const handle = mount({ widgetId: 'aaaaaaaaaaaaaaaa' });
     expect(() => handle.chat.open()).not.toThrow();
 
     const script = document.querySelector<HTMLScriptElement>('script[src*="/widget/widget.js"]')!;

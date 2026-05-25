@@ -49,11 +49,44 @@ export interface WidgetIdentity {
  * Merchant-supplied page/order/customer context. The widget runtime's
  * sanitizer enforces primitives in `custom`: arrays, nested objects, and null
  * are dropped before persistence.
+ *
+ * Identity fields (email, name, externalId) belong in `user.identify()`, not
+ * here. Context is for non-identifying signals.
  */
 export interface WidgetContext {
-  page?: { type?: string; id?: string; path?: string };
-  customer?: { externalId?: string; plan?: string };
-  order?: { id?: string; status?: string };
+  page?: {
+    /** Free-form page category — `home`, `product`, `cart`, `checkout`, etc. */
+    type?: string;
+    /** Stable id for the entity on this page (sku, cart id, article slug). */
+    id?: string;
+    /** URL pathname + query (sent automatically on boot when omitted). */
+    path?: string;
+  };
+  customer?: {
+    /** Host-system customer id. Distinct from `WidgetIdentity.externalId`. */
+    externalId?: string;
+    /** Subscription plan label — `free`, `pro`, `enterprise`. */
+    plan?: string;
+    /** Free-form segment — `vip`, `at_risk`, `trial`. */
+    segment?: string;
+    /** ISO 8601 timestamp of customer creation. */
+    createdAt?: string;
+    /** Lifetime spend in `currency` minor units (e.g. cents). */
+    totalSpent?: number;
+    /** ISO 4217 code matching `totalSpent`. */
+    currency?: string;
+  };
+  order?: {
+    id?: string;
+    /** Free-form status — `pending`, `paid`, `shipped`, `delivered`, `refunded`. */
+    status?: string;
+    /** Total in `currency` minor units (e.g. cents). */
+    total?: number;
+    /** ISO 4217 code — `USD`, `EUR`, `GBP`. */
+    currency?: string;
+    /** Number of line items in the order. */
+    itemCount?: number;
+  };
   custom?: Record<string, string | number | boolean>;
 }
 
@@ -61,13 +94,23 @@ export interface WidgetReadyPayload {
   widgetId: string;
 }
 export interface WidgetOpenPayload {
-  source: 'api' | 'launcher' | 'auto';
+  source: 'api' | 'launcher';
 }
 export interface WidgetClosePayload {
   source: 'api' | 'ui' | 'escape';
 }
+/**
+ * Emitted after every `identify()` call.
+ *
+ * `verified` is `true` when the host supplied a `userHash` that matches the
+ * tenant's identity secret. When `false`, the visitor is recorded as
+ * unverified (still associated to a Contact, but trust level is downgraded).
+ *
+ * `merged` is `true` when two existing contacts collapsed into one as a
+ * result of the identification.
+ */
 export interface WidgetIdentifiedPayload {
-  identified: true;
+  verified: boolean;
   merged: boolean;
 }
 export interface WidgetMessageSentPayload {
@@ -158,10 +201,20 @@ export interface WidgetHandle {
   /**
    * Inject the loader script if not already injected, and resolve once the
    * runtime fires `'ready'`. Idempotent: repeat calls return the same promise.
+   *
+   * Rejects on script load failure (network, CSP, adblocker) or on a 30 s
+   * timeout. The runtime's boot lifecycle is the only async operation with
+   * clear pass/fail signalling; the other imperative methods return
+   * synchronously and fire events on completion (see {@link WidgetEventMap}).
    */
   load(): Promise<void>;
-  /** Wipe the session server-side and locally, then re-boot. */
-  reset(): Promise<void>;
+  /**
+   * Wipe the session server-side and locally, then re-boot.
+   *
+   * Fire-and-forget. The next boot fires `'ready'` again — listen for that
+   * event to know reset completed.
+   */
+  reset(): void;
   /** Tear down the runtime; subsequent calls become no-ops. */
   destroy(): void;
   /** `true` once the runtime has booted and acquired a session token. */
@@ -174,7 +227,15 @@ export interface WidgetHandle {
   };
 
   user: {
-    identify(identity: WidgetIdentity): Promise<void>;
+    /**
+     * Send an identification payload.
+     *
+     * Fire-and-forget. The runtime emits `'identified'` once the backend has
+     * processed the call. Listen for that event to know whether the call was
+     * HMAC-verified (`verified: true`) or fell back to unverified
+     * (`verified: false`).
+     */
+    identify(identity: WidgetIdentity): void;
     getVisitorId(): string | null;
   };
 

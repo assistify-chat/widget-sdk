@@ -29,7 +29,7 @@
     "assistify",
     "live-chat"
   ],
-  "homepage": "https://assistify.chat/docs/integration/npm-package",
+  "homepage": "https://assistify.chat/docs/install/assistify-sdk",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/assistify-chat/widget-sdk.git"

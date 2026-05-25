@@ -23,9 +23,9 @@ interface LoaderProxy {
   open: (...a: unknown[]) => void;
   close: (...a: unknown[]) => void;
   toggle: (...a: unknown[]) => void;
-  reset: (...a: unknown[]) => Promise<void>;
+  reset: (...a: unknown[]) => void;
   destroy: (...a: unknown[]) => void;
-  identify: (...a: unknown[]) => Promise<void>;
+  identify: (...a: unknown[]) => void;
   setContext: (...a: unknown[]) => void;
   clearContext: (...a: unknown[]) => void;
   on: (...a: unknown[]) => () => void;
@@ -67,7 +67,7 @@ afterEach(() => {
 
 describe('mount() script attributes', () => {
   it('sets crossOrigin="anonymous" on the injected script', () => {
-    mount({ widgetId: 'demo' });
+    mount({ widgetId: 'aaaaaaaaaaaaaaaa' });
     const script = document.querySelector<HTMLScriptElement>('script[src*="/widget/widget.js"]')!;
     expect(script.crossOrigin).toBe('anonymous');
   });
@@ -76,7 +76,7 @@ describe('mount() script attributes', () => {
 describe('mount() identity data-attrs', () => {
   it('writes every supported identity field to data-attrs', () => {
     mount({
-      widgetId: 'demo',
+      widgetId: 'aaaaaaaaaaaaaaaa',
       identity: {
         email: 'a@b.c',
         externalId: 'ext-1',
@@ -101,7 +101,7 @@ describe('mount() identity data-attrs', () => {
 
   it('does NOT fire a post-boot identify when only data-attr fields are passed', () => {
     mount({
-      widgetId: 'demo',
+      widgetId: 'aaaaaaaaaaaaaaaa',
       identity: {
         email: 'a@b.c',
         avatarUrl: 'https://cdn/u.png',
@@ -118,7 +118,7 @@ describe('mount() identity data-attrs', () => {
 
   it('fires exactly one post-boot identify carrying the FULL identity when customAttributes is set', () => {
     mount({
-      widgetId: 'demo',
+      widgetId: 'aaaaaaaaaaaaaaaa',
       identity: {
         email: 'a@b.c',
         userHash: 'h'.repeat(64),
@@ -138,7 +138,7 @@ describe('mount() identity data-attrs', () => {
 
 describe('mount() destroy()', () => {
   it('subsequent calls do not throw and do not enqueue post-destroy', () => {
-    const handle = mount({ widgetId: 'demo' });
+    const handle = mount({ widgetId: 'aaaaaaaaaaaaaaaa' });
     handle.destroy();
     expect(() => handle.chat.open()).not.toThrow();
   });
@@ -148,10 +148,10 @@ describe('mount() legacy-script-reuse race', () => {
   it('drains queued calls once window.Assistify appears post-mount', async () => {
     const legacy = document.createElement('script');
     legacy.src = 'https://assistify.chat/widget/widget.js';
-    legacy.setAttribute('data-widget-id', 'demo');
+    legacy.setAttribute('data-widget-id', 'aaaaaaaaaaaaaaaa');
     document.body.appendChild(legacy);
 
-    const handle = mount({ widgetId: 'demo' });
+    const handle = mount({ widgetId: 'aaaaaaaaaaaaaaaa' });
     handle.chat.open();
 
     // window.Assistify is NOT installed yet; the call must be buffered.

@@ -1,10 +1,10 @@
 /** @vitest-environment jsdom */
-import { describe, expect, it, beforeEach } from 'vitest';
+import { describe, expect, it, beforeEach, vi } from 'vitest';
 import * as React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { AssistifyScript, useAssistify } from '../src/react';
+import { AssistifyScript, useAssistify, __resetReactSingletonForTests } from '../src/react';
 import type { WidgetHandle } from '../src/types';
 
 function html(node: React.ReactElement): string {
@@ -13,15 +13,15 @@ function html(node: React.ReactElement): string {
 
 describe('<AssistifyScript />', () => {
   it('renders one async script with widgetId', () => {
-    const out = html(<AssistifyScript widgetId="demo" />);
+    const out = html(<AssistifyScript widgetId="aaaaaaaaaaaaaaaa" />);
     expect(out).toMatch(/<script[^>]*src="https:\/\/assistify\.chat\/widget\/widget\.js"/);
-    expect(out).toMatch(/data-widget-id="demo"/);
+    expect(out).toMatch(/data-widget-id="aaaaaaaaaaaaaaaa"/);
   });
 
   it('emits every identity data-attr except customAttributes', () => {
     const out = html(
       <AssistifyScript
-        widgetId="demo"
+        widgetId="aaaaaaaaaaaaaaaa"
         identity={{
           email: 'a@b.c',
           userHash: 'h'.repeat(64),
@@ -54,12 +54,12 @@ describe('useAssistify', () => {
   function captureHandles(): WidgetHandle[] {
     const handles: WidgetHandle[] = [];
     function A(): React.ReactElement {
-      const h = useAssistify({ widgetId: 'demo' });
+      const h = useAssistify({ widgetId: 'aaaaaaaaaaaaaaaa' });
       handles.push(h);
       return <span />;
     }
     function B(): React.ReactElement {
-      const h = useAssistify({ widgetId: 'demo' });
+      const h = useAssistify({ widgetId: 'aaaaaaaaaaaaaaaa' });
       handles.push(h);
       return <span />;
     }
@@ -89,5 +89,28 @@ describe('useAssistify', () => {
     root = createRoot(container);
     const [c] = captureHandles();
     expect(c).toBe(a);
+  });
+
+  it('warns in development when a second call passes a different widgetId', () => {
+    __resetReactSingletonForTests();
+    const spy = vi.spyOn(console, 'warn').mockImplementation(() => { /* swallow */ });
+    function A(): React.ReactElement {
+      useAssistify({ widgetId: 'aaaaaaaaaaaaaaaa' });
+      return <span />;
+    }
+    function B(): React.ReactElement {
+      useAssistify({ widgetId: 'bbbbbbbbbbbbbbbb' });
+      return <span />;
+    }
+    try {
+      act(() => {
+        root.render(<><A /><B /></>);
+      });
+      const warnings = spy.mock.calls.map((c) => String(c[0]));
+      expect(warnings.some((w) => /widgetId="bbbbbbbbbbbbbbbb"/.test(w))).toBe(true);
+      expect(warnings.some((w) => /already mounted/.test(w))).toBe(true);
+    } finally {
+      spy.mockRestore();
+    }
   });
 });

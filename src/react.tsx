@@ -68,6 +68,7 @@ export function AssistifyScript({
 }
 
 let singleton: WidgetHandle | null = null;
+let capturedWidgetId: string | null = null;
 
 /**
  * Client-side imperative hook. Module-singleton handle.
@@ -95,13 +96,34 @@ let singleton: WidgetHandle | null = null;
  */
 export function useAssistify(opts: MountOptions): WidgetHandle {
   const [handle] = React.useState<WidgetHandle>(() => {
-    if (!singleton) singleton = mount(opts);
+    if (!singleton) {
+      singleton = mount(opts);
+      capturedWidgetId = opts.widgetId;
+    }
     return singleton;
   });
+
+  // Surface the common typo "two components passed different widgetIds" in
+  // development. Stripped from production bundles by every modern bundler's
+  // dead-code elimination on `process.env.NODE_ENV`.
+  if (
+    process.env.NODE_ENV !== 'production' &&
+    capturedWidgetId !== null &&
+    opts.widgetId !== capturedWidgetId
+  ) {
+    console.warn(
+      '[assistify] useAssistify() called with widgetId="' + opts.widgetId + '" ' +
+      'but the widget is already mounted with widgetId="' + capturedWidgetId + '". ' +
+      'Only one widget per page is supported; the second call is ignored. ' +
+      'Pass the same widgetId from every call site.',
+    );
+  }
+
   return handle;
 }
 
 /** Test-only escape hatch. */
 export function __resetReactSingletonForTests(): void {
   singleton = null;
+  capturedWidgetId = null;
 }

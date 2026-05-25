@@ -1,7 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   dispatch,
-  dispatchAsync,
   drainPendingCalls,
   readIsReady,
   readVisitorId,
@@ -33,7 +32,7 @@ function makeSpy<R = unknown>(fn: (...args: unknown[]) => R): {
 function installAssistify(overrides: Partial<StubAssistify> = {}): StubAssistify {
   const stub: StubAssistify = {
     open: makeSpy(() => undefined),
-    identify: makeSpy(() => Promise.resolve()),
+    identify: makeSpy(() => undefined),
     on: makeSpy(() => () => { /* unsub */ }),
     isReady: () => true,
     getVisitorId: () => 'anon_' + 'A'.repeat(22),
@@ -68,11 +67,19 @@ describe('dispatch / drain', () => {
     expect(stub.open.calls.length).toBe(1);
   });
 
-  it('dispatchAsync resolves once the queued call lands on the runtime', async () => {
-    const promise = dispatchAsync('identify', [{ email: 'a@b.c' }]);
-    installAssistify();
-    drainPendingCalls();
-    await expect(promise).resolves.toBeUndefined();
+  it('swallows runtime errors during drain so one bad call does not block others', () => {
+    dispatch('open', []);
+    dispatch('identify', [{ email: 'a@b.c' }]);
+    const stub = installAssistify({
+      open: makeSpy(() => { throw new Error('boom'); }),
+    });
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => { /* swallow */ });
+    try {
+      expect(() => drainPendingCalls()).not.toThrow();
+      expect(stub.identify.calls.length).toBe(1);
+    } finally {
+      consoleSpy.mockRestore();
+    }
   });
 });
 
@@ -83,7 +90,7 @@ describe('readIsReady', () => {
 });
 
 describe('readVisitorId', () => {
-  const widgetId = 'demo';
+  const widgetId = 'aaaaaaaaaaaaaaaa';
   const validId = 'anon_' + 'A'.repeat(22);
 
   it('returns loader-proxy value when Assistify exists', () => {

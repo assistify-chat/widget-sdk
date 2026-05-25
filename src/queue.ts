@@ -34,8 +34,6 @@ type FlatMethod =
 interface PendingCall {
   method: FlatMethod;
   args: unknown[];
-  resolve?: (value: unknown) => void;
-  reject?: (err: unknown) => void;
 }
 
 const pendingCalls: PendingCall[] = [];
@@ -66,26 +64,6 @@ export function dispatch(method: FlatMethod, args: unknown[]): unknown {
   return undefined;
 }
 
-/**
- * Like {@link dispatch} but tracks a Promise so async callers (`load`, `reset`,
- * `identify`) settle once the queued call has actually been replayed against
- * the runtime.
- */
-export function dispatchAsync(method: FlatMethod, args: unknown[]): Promise<void> {
-  const a = readAssistify();
-  if (a) {
-    const fn = a[method];
-    if (typeof fn === 'function') {
-      const out = (fn as (...a: unknown[]) => unknown).apply(a, args);
-      return out instanceof Promise ? (out as Promise<void>) : Promise.resolve();
-    }
-    return Promise.resolve();
-  }
-  return new Promise<void>((resolve, reject) => {
-    pendingCalls.push({ method, args, resolve: resolve as (v: unknown) => void, reject });
-  });
-}
-
 /** Read pre-boot. Returns `false` when the runtime is not yet installed. */
 export function readIsReady(): boolean {
   const a = readAssistify();
@@ -113,6 +91,11 @@ export function readVisitorId(widgetId: string | null): string | null {
 /**
  * Replay every buffered call against `window.Assistify`. Called by `mount.ts`
  * from `script.onload`. Idempotent; subsequent invocations replay nothing.
+ *
+ * Calls are intentionally fire-and-forget: the SDK does not promise that
+ * the call has been applied by the runtime when this returns. Hosts that
+ * need a completion signal should observe the corresponding event on the
+ * returned handle (`'ready'` for boot, `'identified'` for identify, etc).
  */
 export function drainPendingCalls(): void {
   const a = readAssistify();
@@ -121,21 +104,10 @@ export function drainPendingCalls(): void {
   for (const call of batch) {
     try {
       const fn = a[call.method];
-      if (typeof fn !== 'function') {
-        call.resolve?.(undefined);
-        continue;
-      }
-      const out = (fn as (...args: unknown[]) => unknown).apply(a, call.args);
-      if (out instanceof Promise) {
-        out.then(
-          (v) => call.resolve?.(v),
-          (e) => call.reject?.(e),
-        );
-      } else {
-        call.resolve?.(out);
-      }
+      if (typeof fn !== 'function') continue;
+      (fn as (...args: unknown[]) => unknown).apply(a, call.args);
     } catch (err) {
-      call.reject?.(err);
+      console.error('[assistify] drain ' + call.method + ' threw', err);
     }
   }
 }

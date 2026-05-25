@@ -102,6 +102,15 @@ Examples in Node, Python, PHP, Ruby, and Go: <https://assistify.chat/docs/integr
 
 Rule of thumb: server-rendered identity requires HMAC; imperative identity does not.
 
+`identify()` is fire-and-forget. Listen for the `'identified'` event to know whether the call was processed as verified:
+
+```ts
+widget.events.on('identified', ({ verified, merged }) => {
+  // verified === true when the supplied userHash matched the tenant secret
+});
+widget.user.identify({ email, userHash });
+```
+
 ## Content Security Policy
 
 Hosts must allow:
@@ -114,4 +123,4 @@ img-src     https://assistify.chat data:;
 
 ## Docs
 
-Full API reference: <https://assistify.chat/docs/integration/npm-package>.
+Full API reference: <https://assistify.chat/docs/install/assistify-sdk>.

@@ -2,7 +2,15 @@
  * mount(): script injection, idempotent legacy detection, handle factory.
  *
  * One widget per page. Module state (loader script element, in-flight load
- * promise) is shared across every mount() call.
+ * promise, last-known identity/context) is shared across every mount() call.
+ *
+ * Boot triggers vs. buffer-only:
+ *   - Boot-triggering: load(), reset(), chat.open/close/toggle.
+ *   - Buffer-only:     user.identify, context.set/clear, events.on/off.
+ *
+ * Identity and context updates accumulate in `state.currentIdentity` /
+ * `state.currentContext` so the latest values get baked into the script tag
+ * when boot eventually fires, regardless of which call triggered it.
  */
 
 import type {
@@ -15,7 +23,6 @@ import type {
 } from './types';
 import {
   dispatch,
-  dispatchAsync,
   drainPendingCalls,
   readAssistify,
   readIsReady,
@@ -24,6 +31,42 @@ import {
 
 const DEFAULT_BASE_URL = 'https://assistify.chat';
 const LOAD_TIMEOUT_MS = 30_000;
+const WIDGET_ID_PATTERN = /^[0-9a-f]{16}$/;
+const PLACEHOLDER_WIDGET_IDS = new Set([
+  'YOUR_WIDGET_ID',
+  'your_widget_id',
+  'YOUR-WIDGET-ID',
+  'your-widget-id',
+  'REPLACE_ME',
+  'replace_me',
+]);
+
+/**
+ * Surface a console error for the common copy-paste mistake of leaving the
+ * doc placeholder in production, or for the obvious format mismatch when
+ * the host has pasted something that cannot be a tenant widget ID.
+ *
+ * Never throws — we still let the call proceed and let the backend reject
+ * the boot request. A loud console line is enough to surface the typo
+ * during integration without breaking pages that have other reasons to
+ * supply a non-hex widgetId (custom self-hosted backend, etc).
+ */
+function warnInvalidWidgetId(widgetId: string): void {
+  if (PLACEHOLDER_WIDGET_IDS.has(widgetId)) {
+    console.error(
+      '[assistify] mount() received placeholder widgetId "' + widgetId + '". ' +
+      'Copy your real widget ID from Dashboard → Widget → Authentication → Widget ID.',
+    );
+    return;
+  }
+  if (!WIDGET_ID_PATTERN.test(widgetId)) {
+    console.error(
+      '[assistify] mount() received widgetId "' + widgetId + '" which is not ' +
+      '16 lowercase hex characters. The backend will reject the boot request. ' +
+      'Copy your widget ID from Dashboard → Widget → Authentication → Widget ID.',
+    );
+  }
+}
 
 interface MountState {
   widgetId: string | null;
@@ -35,6 +78,14 @@ interface MountState {
   loadRejecters: Array<(err: Error) => void>;
   loadResolvers: Array<() => void>;
   destroyed: boolean;
+  /**
+   * Latest identity supplied via `mount({ identity })` or `user.identify()`.
+   * Read at script-injection time so deferred boots carry the right data-user-*
+   * attributes regardless of which call set the identity.
+   */
+  currentIdentity: WidgetIdentity | null;
+  /** Latest context supplied via `mount({ context })` or `context.set()`. */
+  currentContext: WidgetContext | null;
 }
 
 const state: MountState = {
@@ -47,6 +98,8 @@ const state: MountState = {
   loadRejecters: [],
   loadResolvers: [],
   destroyed: false,
+  currentIdentity: null,
+  currentContext: null,
 };
 
 const inBrowser = (): boolean =>
@@ -79,15 +132,23 @@ function applyIdentityAttrs(script: HTMLScriptElement, identity: WidgetIdentity)
 }
 
 /**
- * `customAttributes` is the only identity field that cannot ride on data-attrs
- * (arbitrary JSON does not fit cleanly in HTML attributes). When present, fire
- * a post-boot identify carrying the full identity; the backend merges
- * customAttributes onto the contact matched by anchor (email/externalId/discordId)
- * and re-verifies userHash, so the same session cost as the boot-time path.
+ * Shallow merge per top-level key. `email/externalId/userHash` on the new
+ * payload override the old; objects like `customAttributes` are replaced
+ * wholesale because partial deep-merge surprises hosts more often than it
+ * helps.
  */
-function queueCustomAttributesIdentity(identity: WidgetIdentity): void {
-  if (!identity.customAttributes) return;
-  void dispatchAsync('identify', [identity]);
+function mergeIdentity(
+  current: WidgetIdentity | null,
+  incoming: WidgetIdentity,
+): WidgetIdentity {
+  return { ...(current ?? {}), ...incoming };
+}
+
+function mergeContext(
+  current: WidgetContext | null,
+  incoming: WidgetContext,
+): WidgetContext {
+  return { ...(current ?? {}), ...incoming };
 }
 
 function findExistingLoaderScript(): HTMLScriptElement | null {
@@ -118,9 +179,10 @@ function schedulePostLegacyDrain(): void {
   }, 50);
 }
 
-function ensureInstalled(opts: MountOptions): void {
+function ensureInstalled(): void {
   if (!inBrowser()) return;
   if (state.destroyed) return;
+  if (!state.widgetId) return;
 
   // Already installed by this SDK instance.
   if (state.scriptEl) return;
@@ -128,7 +190,7 @@ function ensureInstalled(opts: MountOptions): void {
   const existing = findExistingLoaderScript();
   if (existing) {
     const existingId = existing.getAttribute('data-widget-id') ?? '<unknown>';
-    if (existingId === opts.widgetId) {
+    if (existingId === state.widgetId) {
       state.scriptEl = existing;
       if (readAssistify()) {
         state.scriptStatus = 'loaded';
@@ -141,13 +203,13 @@ function ensureInstalled(opts: MountOptions): void {
       return;
     }
     throw new Error(
-      `[assistify] mount() called with widgetId="${opts.widgetId}" but a script ` +
+      `[assistify] mount() called with widgetId="${state.widgetId}" but a script ` +
       `for widgetId="${existingId}" is already on the page. Only one widget per page is supported.`,
     );
   }
 
   (window as unknown as { CHATBOT_CONFIG?: { widgetId: string } }).CHATBOT_CONFIG = {
-    widgetId: opts.widgetId,
+    widgetId: state.widgetId,
   };
 
   const script = document.createElement('script');
@@ -157,15 +219,13 @@ function ensureInstalled(opts: MountOptions): void {
   // SRI and strict-CSP hosts happy.
   script.crossOrigin = 'anonymous';
   script.setAttribute('data-assistify-loader', '');
-  script.setAttribute('data-widget-id', opts.widgetId);
+  script.setAttribute('data-widget-id', state.widgetId);
 
-  if (opts.identity) applyIdentityAttrs(script, opts.identity);
+  if (state.currentIdentity) applyIdentityAttrs(script, state.currentIdentity);
 
   script.onload = () => {
     state.scriptStatus = 'loaded';
     drainPendingCalls();
-    // Anything queued (e.g. context, overflow identify fields) is now on
-    // the loader's _queue and will be replayed by the runtime on boot.
   };
   script.onerror = () => {
     const err = new Error(
@@ -182,17 +242,22 @@ function ensureInstalled(opts: MountOptions): void {
   state.scriptEl = script;
   document.head.appendChild(script);
 
-  if (opts.identity) queueCustomAttributesIdentity(opts.identity);
-  if (opts.context) void dispatchAsync('setContext', [opts.context]);
+  // Buffer a post-boot identify when `customAttributes` is present — that one
+  // field cannot ride on data-attrs, so the runtime needs the full payload
+  // through the normal identify channel.
+  if (state.currentIdentity?.customAttributes) {
+    dispatch('identify', [state.currentIdentity]);
+  }
+  if (state.currentContext) dispatch('setContext', [state.currentContext]);
 }
 
-function loadOnce(opts: MountOptions): Promise<void> {
+function loadOnce(): Promise<void> {
   if (!inBrowser()) return Promise.resolve();
   if (state.loadPromise) return state.loadPromise;
 
   state.loadPromise = new Promise<void>((resolve, reject) => {
     try {
-      ensureInstalled(opts);
+      ensureInstalled();
     } catch (err) {
       reject(err instanceof Error ? err : new Error(String(err)));
       return;
@@ -212,7 +277,6 @@ function loadOnce(opts: MountOptions): Promise<void> {
     state.loadRejecters.push(reject);
 
     const cb = (): void => {
-      // splice this resolver out; handled by the ready callback path
       const idx = state.loadResolvers.indexOf(resolve);
       if (idx >= 0) state.loadResolvers.splice(idx, 1);
       const ridx = state.loadRejecters.indexOf(reject);
@@ -250,7 +314,7 @@ function makeNoopHandle(): WidgetHandle {
   };
   return {
     load: async () => { warn('load'); },
-    reset: async () => { warn('reset'); },
+    reset: () => warn('reset'),
     destroy: () => warn('destroy'),
     isReady: () => false,
     chat: {
@@ -259,7 +323,7 @@ function makeNoopHandle(): WidgetHandle {
       toggle: () => warn('chat.toggle'),
     },
     user: {
-      identify: async () => { warn('user.identify'); },
+      identify: () => warn('user.identify'),
       getVisitorId: () => null,
     },
     context: {
@@ -291,23 +355,32 @@ function makeNoopHandle(): WidgetHandle {
 export function mount(opts: MountOptions): WidgetHandle {
   if (!inBrowser()) return makeNoopHandle();
 
+  warnInvalidWidgetId(opts.widgetId);
+
   state.widgetId = opts.widgetId;
   state.baseUrl = normaliseBaseUrl(opts.baseUrl);
   state.destroyed = false;
+  if (opts.identity) state.currentIdentity = mergeIdentity(state.currentIdentity, opts.identity);
+  if (opts.context) state.currentContext = mergeContext(state.currentContext, opts.context);
 
   const autoload = opts.autoload !== false;
-  if (autoload) ensureInstalled(opts);
+  if (autoload) ensureInstalled();
 
-  const ensureLoaded = (): void => {
+  const triggerBoot = (): void => {
     if (state.scriptEl) return;
-    void loadOnce(opts).catch(() => { /* swallow; surfaced via load() */ });
+    void loadOnce().catch(() => { /* surfaced via load() */ });
   };
 
   const handle: WidgetHandle = {
-    load: () => loadOnce(opts),
+    load: () => loadOnce(),
     reset: () => {
-      ensureLoaded();
-      return dispatchAsync('reset', []);
+      triggerBoot();
+      dispatch('reset', []);
+      // Drop any cached identity/context so the next user.identify() starts
+      // from a clean slate — otherwise a shallow-merge of the new payload
+      // would inherit the previous user's avatarUrl, customAttributes, etc.
+      state.currentIdentity = null;
+      state.currentContext = null;
     },
     destroy: () => {
       dispatch('destroy', []);
@@ -316,22 +389,31 @@ export function mount(opts: MountOptions): WidgetHandle {
     isReady: () => readIsReady(),
 
     chat: {
-      open: () => { ensureLoaded(); dispatch('open', []); },
-      close: () => { ensureLoaded(); dispatch('close', []); },
-      toggle: () => { ensureLoaded(); dispatch('toggle', []); },
+      open: () => { triggerBoot(); dispatch('open', []); },
+      close: () => { triggerBoot(); dispatch('close', []); },
+      toggle: () => { triggerBoot(); dispatch('toggle', []); },
     },
 
     user: {
       identify: (identity) => {
-        ensureLoaded();
-        return dispatchAsync('identify', [identity]);
+        state.currentIdentity = mergeIdentity(state.currentIdentity, identity);
+        // No boot trigger. The call is dispatched (= buffered pre-boot, fired
+        // post-boot). Pre-boot, the next script injection also reads
+        // state.currentIdentity and bakes anchors onto data-user-* attrs.
+        dispatch('identify', [identity]);
       },
       getVisitorId: () => readVisitorId(state.widgetId),
     },
 
     context: {
-      set: (ctx: WidgetContext) => { ensureLoaded(); dispatch('setContext', [ctx]); },
-      clear: () => { ensureLoaded(); dispatch('clearContext', []); },
+      set: (ctx: WidgetContext) => {
+        state.currentContext = mergeContext(state.currentContext, ctx);
+        dispatch('setContext', [ctx]);
+      },
+      clear: () => {
+        state.currentContext = null;
+        dispatch('clearContext', []);
+      },
     },
 
     events: {
@@ -339,7 +421,6 @@ export function mount(opts: MountOptions): WidgetHandle {
         event: E,
         callback: (payload: WidgetEventPayload<E>) => void,
       ): (() => void) => {
-        ensureLoaded();
         const result = dispatch('on', [event, callback]);
         if (typeof result === 'function') return result as () => void;
         return () => { /* inert; see TSDoc on WidgetHandle.events.on */ };
@@ -348,7 +429,6 @@ export function mount(opts: MountOptions): WidgetHandle {
         event: E,
         callback?: (payload: WidgetEventPayload<E>) => void,
       ): void => {
-        ensureLoaded();
         dispatch('off', callback === undefined ? [event] : [event, callback]);
       },
     },
@@ -368,4 +448,6 @@ export function __resetMountForTests(): void {
   state.loadRejecters.length = 0;
   state.loadResolvers.length = 0;
   state.destroyed = false;
+  state.currentIdentity = null;
+  state.currentContext = null;
 }

@@ -4,11 +4,11 @@ import { mount } from '../src/mount';
 
 describe('mount() in a non-browser environment', () => {
   it('returns a no-op handle and never throws', async () => {
-    const handle = mount({ widgetId: 'demo' });
+    const handle = mount({ widgetId: 'aaaaaaaaaaaaaaaa' });
     expect(handle.isReady()).toBe(false);
     expect(handle.user.getVisitorId()).toBe(null);
     await expect(handle.load()).resolves.toBeUndefined();
-    await expect(handle.reset()).resolves.toBeUndefined();
+    expect(() => handle.reset()).not.toThrow();
     expect(() => handle.chat.open()).not.toThrow();
     expect(() => handle.chat.close()).not.toThrow();
     expect(() => handle.chat.toggle()).not.toThrow();
@@ -25,7 +25,7 @@ describe('mount() in a non-browser environment', () => {
     process.env.NODE_ENV = 'development';
     const spy = vi.spyOn(console, 'warn').mockImplementation(() => { /* swallow */ });
     try {
-      const handle = mount({ widgetId: 'demo' });
+      const handle = mount({ widgetId: 'aaaaaaaaaaaaaaaa' });
       handle.chat.open();
       handle.chat.close();
       handle.destroy();
