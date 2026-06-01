@@ -12,8 +12,6 @@ describe('mount() in a non-browser environment', () => {
     expect(() => handle.chat.open()).not.toThrow();
     expect(() => handle.chat.close()).not.toThrow();
     expect(() => handle.chat.toggle()).not.toThrow();
-    expect(() => handle.context.set({ page: { path: '/x' } })).not.toThrow();
-    expect(() => handle.context.clear()).not.toThrow();
     expect(() => handle.destroy()).not.toThrow();
     const unsub = handle.events.on('ready', () => { /* cb */ });
     expect(typeof unsub).toBe('function');

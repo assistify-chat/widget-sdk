@@ -26,8 +26,6 @@ interface LoaderProxy {
   reset: (...a: unknown[]) => void;
   destroy: (...a: unknown[]) => void;
   identify: (...a: unknown[]) => void;
-  setContext: (...a: unknown[]) => void;
-  clearContext: (...a: unknown[]) => void;
   on: (...a: unknown[]) => () => void;
   off: (...a: unknown[]) => void;
   isReady: () => boolean;
@@ -36,7 +34,7 @@ interface LoaderProxy {
 
 function installLoaderProxy(): LoaderProxy {
   const queue: LoaderQueueEntry[] = [];
-  const methods = ['open','close','toggle','reset','destroy','identify','setContext','clearContext','on','off'] as const;
+  const methods = ['open','close','toggle','reset','destroy','identify','on','off'] as const;
   const proxy = {} as Record<string, unknown>;
   for (const m of methods) {
     proxy[m] = (...args: unknown[]) => {

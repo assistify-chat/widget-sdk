@@ -11,8 +11,6 @@ type LoaderAssistify = {
   reset: (...a: unknown[]) => void;
   destroy: (...a: unknown[]) => void;
   identify: (...a: unknown[]) => void;
-  setContext: (...a: unknown[]) => void;
-  clearContext: (...a: unknown[]) => void;
   on: (...a: unknown[]) => () => void;
   off: (...a: unknown[]) => void;
   isReady: () => boolean;
@@ -22,7 +20,7 @@ type LoaderAssistify = {
 /** Mimic the loader IIFE: install the queue proxy on window.Assistify. */
 function installLoaderProxy(): LoaderAssistify {
   const queue: Array<{ method: string; args: unknown[] }> = [];
-  const methods = ['open','close','toggle','reset','destroy','identify','setContext','clearContext','on','off'] as const;
+  const methods = ['open','close','toggle','reset','destroy','identify','on','off'] as const;
   const proxy = {} as Record<string, unknown>;
   for (const m of methods) {
     proxy[m] = (...args: unknown[]) => {
@@ -130,7 +128,6 @@ describe('mount() pre-boot buffer + drain', () => {
   it('queues pre-boot calls locally and drains them through window.Assistify on script.onload', () => {
     const handle = mount({ widgetId: 'aaaaaaaaaaaaaaaa' });
     handle.chat.open();
-    handle.context.set({ page: { type: 'product' } });
 
     const script = document.querySelector<HTMLScriptElement>('script[src*="/widget/widget.js"]')!;
     const loader = installLoaderProxy();
@@ -138,18 +135,6 @@ describe('mount() pre-boot buffer + drain', () => {
 
     const methods = loader._queue.map((c) => c.method);
     expect(methods).toContain('open');
-    expect(methods).toContain('setContext');
-  });
-
-  it('queues context passed to mount() and replays on drain', () => {
-    mount({ widgetId: 'aaaaaaaaaaaaaaaa', context: { page: { path: '/home' } } });
-    const script = document.querySelector<HTMLScriptElement>('script[src*="/widget/widget.js"]')!;
-    const loader = installLoaderProxy();
-    script.dispatchEvent(new Event('load'));
-
-    const setContextCall = loader._queue.find((c) => c.method === 'setContext');
-    expect(setContextCall).toBeDefined();
-    expect((setContextCall!.args[0] as { page: { path: string } }).page.path).toBe('/home');
   });
 });
 
@@ -234,12 +219,6 @@ describe('autoload:false buffer-vs-boot contract', () => {
     expect(document.querySelector('script[src*="/widget/widget.js"]')).toBeNull();
   });
 
-  it('context.set() does not inject the script', () => {
-    const handle = mount({ widgetId: 'aaaaaaaaaaaaaaaa', autoload: false });
-    handle.context.set({ page: { path: '/foo' } });
-    expect(document.querySelector('script[src*="/widget/widget.js"]')).toBeNull();
-  });
-
   it('user.identify() does not inject the script', () => {
     const handle = mount({ widgetId: 'aaaaaaaaaaaaaaaa', autoload: false });
     handle.user.identify({ email: 'a@b.c', userHash: 'a'.repeat(64) });
@@ -278,10 +257,9 @@ describe('autoload:false buffer-vs-boot contract', () => {
     expect(document.querySelector('script[src*="/widget/widget.js"]')).not.toBeNull();
   });
 
-  it('pre-boot context.set() and user.identify() reach the runtime after script.onload', () => {
+  it('pre-boot events.on() and user.identify() reach the runtime after script.onload', () => {
     const handle = mount({ widgetId: 'aaaaaaaaaaaaaaaa', autoload: false });
     handle.events.on('ready', () => { /* noop */ });
-    handle.context.set({ page: { type: 'product' } });
     handle.user.identify({ email: 'a@b.c', userHash: 'a'.repeat(64) });
     handle.load().catch(() => { /* ignore */ });
 
@@ -291,7 +269,6 @@ describe('autoload:false buffer-vs-boot contract', () => {
 
     const methods = loader._queue.map((c) => c.method);
     expect(methods).toContain('on');
-    expect(methods).toContain('setContext');
     expect(methods).toContain('identify');
   });
 });

@@ -2,20 +2,19 @@
  * mount(): script injection, idempotent legacy detection, handle factory.
  *
  * One widget per page. Module state (loader script element, in-flight load
- * promise, last-known identity/context) is shared across every mount() call.
+ * promise, last-known identity) is shared across every mount() call.
  *
  * Boot triggers vs. buffer-only:
  *   - Boot-triggering: load(), reset(), chat.open/close/toggle.
- *   - Buffer-only:     user.identify, context.set/clear, events.on/off.
+ *   - Buffer-only:     user.identify, events.on/off.
  *
- * Identity and context updates accumulate in `state.currentIdentity` /
- * `state.currentContext` so the latest values get baked into the script tag
- * when boot eventually fires, regardless of which call triggered it.
+ * Identity updates accumulate in `state.currentIdentity` so the latest values
+ * get baked into the script tag when boot eventually fires, regardless of
+ * which call triggered it.
  */
 
 import type {
   MountOptions,
-  WidgetContext,
   WidgetEvent,
   WidgetEventPayload,
   WidgetHandle,
@@ -84,8 +83,6 @@ interface MountState {
    * attributes regardless of which call set the identity.
    */
   currentIdentity: WidgetIdentity | null;
-  /** Latest context supplied via `mount({ context })` or `context.set()`. */
-  currentContext: WidgetContext | null;
   /**
    * True between `reset()` and the next `'ready'` event. While true,
    * `user.identify()` buffers in `pendingPostResetIdentity` instead of firing
@@ -112,7 +109,6 @@ const state: MountState = {
   loadResolvers: [],
   destroyed: false,
   currentIdentity: null,
-  currentContext: null,
   resetting: false,
   pendingPostResetIdentity: null,
   pendingResetUnsubscribe: null,
@@ -157,13 +153,6 @@ function mergeIdentity(
   current: WidgetIdentity | null,
   incoming: WidgetIdentity,
 ): WidgetIdentity {
-  return { ...(current ?? {}), ...incoming };
-}
-
-function mergeContext(
-  current: WidgetContext | null,
-  incoming: WidgetContext,
-): WidgetContext {
   return { ...(current ?? {}), ...incoming };
 }
 
@@ -264,7 +253,6 @@ function ensureInstalled(): void {
   if (state.currentIdentity?.customAttributes) {
     dispatch('identify', [state.currentIdentity]);
   }
-  if (state.currentContext) dispatch('setContext', [state.currentContext]);
 }
 
 function loadOnce(): Promise<void> {
@@ -342,10 +330,6 @@ function makeNoopHandle(): WidgetHandle {
       identify: () => warn('user.identify'),
       getVisitorId: () => null,
     },
-    context: {
-      set: () => warn('context.set'),
-      clear: () => warn('context.clear'),
-    },
     events: {
       on: () => () => { /* no-op */ },
       off: () => { /* no-op */ },
@@ -377,7 +361,6 @@ export function mount(opts: MountOptions): WidgetHandle {
   state.baseUrl = normaliseBaseUrl(opts.baseUrl);
   state.destroyed = false;
   if (opts.identity) state.currentIdentity = mergeIdentity(state.currentIdentity, opts.identity);
-  if (opts.context) state.currentContext = mergeContext(state.currentContext, opts.context);
 
   const autoload = opts.autoload !== false;
   if (autoload) ensureInstalled();
@@ -422,11 +405,10 @@ export function mount(opts: MountOptions): WidgetHandle {
       state.pendingResetUnsubscribe =
         typeof unsubResult === 'function' ? (unsubResult as () => void) : null;
       dispatch('reset', []);
-      // Drop any cached identity/context so the next user.identify() starts
-      // from a clean slate — otherwise a shallow-merge of the new payload
-      // would inherit the previous user's avatarUrl, customAttributes, etc.
+      // Drop any cached identity so the next user.identify() starts from a
+      // clean slate — otherwise a shallow-merge of the new payload would
+      // inherit the previous user's avatarUrl, customAttributes, etc.
       state.currentIdentity = null;
-      state.currentContext = null;
     },
     destroy: () => {
       dispatch('destroy', []);
@@ -466,17 +448,6 @@ export function mount(opts: MountOptions): WidgetHandle {
       getVisitorId: () => readVisitorId(state.widgetId),
     },
 
-    context: {
-      set: (ctx: WidgetContext) => {
-        state.currentContext = mergeContext(state.currentContext, ctx);
-        dispatch('setContext', [ctx]);
-      },
-      clear: () => {
-        state.currentContext = null;
-        dispatch('clearContext', []);
-      },
-    },
-
     events: {
       on: <E extends WidgetEvent>(
         event: E,
@@ -510,7 +481,6 @@ export function __resetMountForTests(): void {
   state.loadResolvers.length = 0;
   state.destroyed = false;
   state.currentIdentity = null;
-  state.currentContext = null;
   state.resetting = false;
   state.pendingPostResetIdentity = null;
   state.pendingResetUnsubscribe = null;

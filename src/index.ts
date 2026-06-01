@@ -3,7 +3,6 @@ export type {
   MountOptions,
   WidgetHandle,
   WidgetIdentity,
-  WidgetContext,
   WidgetEvent,
   WidgetEventMap,
   WidgetEventPayload,

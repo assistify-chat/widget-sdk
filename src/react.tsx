@@ -32,9 +32,6 @@ interface AssistifyScriptProps {
  * Render the Assistify loader script declaratively. Safe to drop into a
  * Next.js App Router server component or any framework's root layout.
  *
- * `context` is not accepted in v1. Server-rendered context support requires
- * loader-side `data-context-*` attrs that do not yet exist.
- *
  * @example
  * ```tsx
  * import { AssistifyScript } from '@assistifychat/widget/react';

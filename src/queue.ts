@@ -16,8 +16,6 @@ interface AssistifyGlobal {
   reset: (...args: unknown[]) => unknown;
   destroy: (...args: unknown[]) => unknown;
   identify: (...args: unknown[]) => unknown;
-  setContext: (...args: unknown[]) => unknown;
-  clearContext: (...args: unknown[]) => unknown;
   on: (...args: unknown[]) => unknown;
   off: (...args: unknown[]) => unknown;
   isReady?: () => boolean;
@@ -28,7 +26,6 @@ interface AssistifyGlobal {
 type FlatMethod =
   | 'open' | 'close' | 'toggle'
   | 'reset' | 'destroy' | 'identify'
-  | 'setContext' | 'clearContext'
   | 'on' | 'off';
 
 interface PendingCall {

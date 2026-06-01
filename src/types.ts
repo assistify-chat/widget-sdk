@@ -45,51 +45,6 @@ export interface WidgetIdentity {
   userHash?: string;
 }
 
-/**
- * Merchant-supplied page/order/customer context. The widget runtime's
- * sanitizer enforces primitives in `custom`: arrays, nested objects, and null
- * are dropped before persistence.
- *
- * Identity fields (email, name, externalId) belong in `user.identify()`, not
- * here. Context is for non-identifying signals.
- */
-export interface WidgetContext {
-  page?: {
-    /** Free-form page category — `home`, `product`, `cart`, `checkout`, etc. */
-    type?: string;
-    /** Stable id for the entity on this page (sku, cart id, article slug). */
-    id?: string;
-    /** URL pathname + query (sent automatically on boot when omitted). */
-    path?: string;
-  };
-  customer?: {
-    /** Host-system customer id. Distinct from `WidgetIdentity.externalId`. */
-    externalId?: string;
-    /** Subscription plan label — `free`, `pro`, `enterprise`. */
-    plan?: string;
-    /** Free-form segment — `vip`, `at_risk`, `trial`. */
-    segment?: string;
-    /** ISO 8601 timestamp of customer creation. */
-    createdAt?: string;
-    /** Lifetime spend in `currency` minor units (e.g. cents). */
-    totalSpent?: number;
-    /** ISO 4217 code matching `totalSpent`. */
-    currency?: string;
-  };
-  order?: {
-    id?: string;
-    /** Free-form status — `pending`, `paid`, `shipped`, `delivered`, `refunded`. */
-    status?: string;
-    /** Total in `currency` minor units (e.g. cents). */
-    total?: number;
-    /** ISO 4217 code — `USD`, `EUR`, `GBP`. */
-    currency?: string;
-    /** Number of line items in the order. */
-    itemCount?: number;
-  };
-  custom?: Record<string, string | number | boolean>;
-}
-
 export interface WidgetReadyPayload {
   widgetId: string;
 }
@@ -183,12 +138,6 @@ export interface MountOptions {
    * `handle.user.identify()` post-boot to record an unverified identity.
    */
   identity?: WidgetIdentity;
-
-  /**
-   * Initial visitor/page context. Buffered locally and replayed via
-   * `Assistify.setContext()` on first runtime boot.
-   */
-  context?: WidgetContext;
 }
 
 /**
@@ -237,11 +186,6 @@ export interface WidgetHandle {
      */
     identify(identity: WidgetIdentity): void;
     getVisitorId(): string | null;
-  };
-
-  context: {
-    set(context: WidgetContext): void;
-    clear(): void;
   };
 
   events: {
