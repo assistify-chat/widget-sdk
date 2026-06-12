@@ -61,11 +61,25 @@ export interface WidgetClosePayload {
  * tenant's identity secret. When `false`, the visitor is recorded as
  * unverified (still associated to a Contact, but trust level is downgraded).
  *
- * `merged` is `true` when two existing contacts collapsed into one as a
- * result of the identification.
+ * `merged` is `true` when the identification attached the session to a
+ * Contact that already existed before the call: either an anonymous session
+ * landing on a known Contact, or two contact rows collapsing into one.
+ * `false` means a brand-new Contact was created.
  */
 export interface WidgetIdentifiedPayload {
   verified: boolean;
+  merged: boolean;
+}
+
+/**
+ * Emitted after a contact's email is proved (magic-link clicked, OAuth
+ * provider verified, HMAC upgrade, or agent-set trust). Distinct from
+ * `identified` — that fires on claim, this fires on proof. Payload
+ * deliberately omits email and contactId to avoid leaking PII to
+ * merchant-page scripts.
+ */
+export interface WidgetVerifiedPayload {
+  verifiedVia: 'HMAC' | 'MAGIC_LINK' | 'OAUTH' | 'AGENT';
   merged: boolean;
 }
 export interface WidgetMessageSentPayload {
@@ -87,6 +101,7 @@ export interface WidgetEventMap {
   open: WidgetOpenPayload;
   close: WidgetClosePayload;
   identified: WidgetIdentifiedPayload;
+  verified: WidgetVerifiedPayload;
   'message:sent': WidgetMessageSentPayload;
   'message:received': WidgetMessageReceivedPayload;
   'unread:change': WidgetUnreadChangePayload;
@@ -164,7 +179,12 @@ export interface WidgetHandle {
    * event to know reset completed.
    */
   reset(): void;
-  /** Tear down the runtime; subsequent calls become no-ops. */
+  /**
+   * Tear down the widget UI. Visitor storage on the host origin is left
+   * intact, and the teardown is reversible within the same page session:
+   * calling `mount()` again (or any boot-triggering method on the handle)
+   * boots the widget back up and the returning visitor is recognized.
+   */
   destroy(): void;
   /** `true` once the runtime has booted and acquired a session token. */
   isReady(): boolean;

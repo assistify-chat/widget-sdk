@@ -8,6 +8,11 @@
  *   - Boot-triggering: load(), reset(), chat.open/close/toggle.
  *   - Buffer-only:     user.identify, events.on/off.
  *
+ * Revival: after destroy() the runtime swaps window.Assistify for a stub
+ * whose `boot` method re-runs the full boot. mount() and load() dispatch
+ * 'boot' to it; on a live runtime or the loader proxy that dispatch is a
+ * silent no-op.
+ *
  * Identity updates accumulate in `state.currentIdentity` so the latest values
  * get baked into the script tag when boot eventually fires, regardless of
  * which call triggered it.
@@ -54,7 +59,7 @@ function warnInvalidWidgetId(widgetId: string): void {
   if (PLACEHOLDER_WIDGET_IDS.has(widgetId)) {
     console.error(
       '[assistify] mount() received placeholder widgetId "' + widgetId + '". ' +
-      'Copy your real widget ID from Dashboard → Widget → Authentication → Widget ID.',
+      'Copy your real widget ID from Dashboard → Widget → Settings → Credentials.',
     );
     return;
   }
@@ -62,7 +67,7 @@ function warnInvalidWidgetId(widgetId: string): void {
     console.error(
       '[assistify] mount() received widgetId "' + widgetId + '" which is not ' +
       '16 lowercase hex characters. The backend will reject the boot request. ' +
-      'Copy your widget ID from Dashboard → Widget → Authentication → Widget ID.',
+      'Copy your widget ID from Dashboard → Widget → Settings → Credentials.',
     );
   }
 }
@@ -288,6 +293,10 @@ function loadOnce(): Promise<void> {
       resolve();
     };
     dispatch('on', ['ready', cb]);
+    // Post-destroy revival: only the runtime's revival stub implements
+    // 'boot'; on first load the script injection above is what boots, and
+    // this dispatch is a no-op.
+    dispatch('boot', []);
 
     setTimeout(() => {
       if (readIsReady()) {
@@ -363,7 +372,14 @@ export function mount(opts: MountOptions): WidgetHandle {
   if (opts.identity) state.currentIdentity = mergeIdentity(state.currentIdentity, opts.identity);
 
   const autoload = opts.autoload !== false;
-  if (autoload) ensureInstalled();
+  if (autoload) {
+    ensureInstalled();
+    // Revival path: after destroy() the runtime leaves a stub on
+    // window.Assistify whose `boot` re-runs the full boot. On a first mount
+    // the global is absent (or is the loader proxy / live runtime, neither
+    // of which has `boot`), so this is a no-op everywhere else.
+    if (readAssistify()) dispatch('boot', []);
+  }
 
   const triggerBoot = (): void => {
     if (state.scriptEl) return;
@@ -413,6 +429,10 @@ export function mount(opts: MountOptions): WidgetHandle {
     destroy: () => {
       dispatch('destroy', []);
       state.destroyed = true;
+      // The runtime swaps in a re-bootable stub on destroy. Drop the settled
+      // load promise so a post-revival load() awaits the next 'ready' instead
+      // of resolving against the torn-down boot.
+      state.loadPromise = null;
       if (state.pendingResetUnsubscribe) {
         state.pendingResetUnsubscribe();
         state.pendingResetUnsubscribe = null;

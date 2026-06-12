@@ -10,6 +10,7 @@ export type {
   WidgetOpenPayload,
   WidgetClosePayload,
   WidgetIdentifiedPayload,
+  WidgetVerifiedPayload,
   WidgetMessageSentPayload,
   WidgetMessageReceivedPayload,
   WidgetUnreadChangePayload,

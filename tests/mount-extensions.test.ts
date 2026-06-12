@@ -140,6 +140,41 @@ describe('mount() destroy()', () => {
     handle.destroy();
     expect(() => handle.chat.open()).not.toThrow();
   });
+
+  it('mount() after destroy() dispatches boot to the runtime revival stub', () => {
+    const handle = mount({ widgetId: 'aaaaaaaaaaaaaaaa' });
+
+    // Simulate the runtime: destroy() swaps window.Assistify for a revival
+    // stub whose `boot` re-runs the full boot.
+    const bootSpy = vi.fn();
+    const stub = installLoaderProxy() as unknown as Record<string, unknown>;
+    stub.boot = bootSpy;
+
+    handle.destroy();
+    mount({ widgetId: 'aaaaaaaaaaaaaaaa' });
+
+    expect(bootSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('load() after destroy() re-awaits ready instead of resolving stale', async () => {
+    const handle = mount({ widgetId: 'aaaaaaaaaaaaaaaa' });
+
+    const bootSpy = vi.fn();
+    const stub = installLoaderProxy() as unknown as Record<string, unknown>;
+    stub.boot = bootSpy;
+
+    handle.destroy();
+
+    let settled = false;
+    // Swallow the eventual 30s timeout rejection; this test only asserts the
+    // promise is pending again right after destroy().
+    void handle.load().then(() => { settled = true; }).catch(() => { /* expected */ });
+    // The revival stub reports isReady() === false and boot is asynchronous,
+    // so load() must be pending again, not resolved from the previous cycle.
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    expect(bootSpy).toHaveBeenCalled();
+  });
 });
 
 describe('mount() legacy-script-reuse race', () => {

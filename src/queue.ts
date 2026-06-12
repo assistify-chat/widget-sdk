@@ -20,13 +20,19 @@ interface AssistifyGlobal {
   off: (...args: unknown[]) => unknown;
   isReady?: () => boolean;
   getVisitorId?: () => string | null;
+  /**
+   * Present only on the runtime's post-destroy revival stub: re-boots the
+   * widget with no other side effect. Absent on the live runtime and on the
+   * loader proxy, where dispatching 'boot' is a silent no-op by design.
+   */
+  boot?: () => void;
   [k: string]: unknown;
 }
 
 type FlatMethod =
   | 'open' | 'close' | 'toggle'
   | 'reset' | 'destroy' | 'identify'
-  | 'on' | 'off';
+  | 'on' | 'off' | 'boot';
 
 interface PendingCall {
   method: FlatMethod;
