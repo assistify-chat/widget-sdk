@@ -89,7 +89,7 @@ import { createHmac } from 'node:crypto';
 const userHash = createHmac('sha256', identitySecret).update(email).digest('hex');
 ```
 
-Examples in Node, Python, PHP, Ruby, and Go: <https://assistify.chat/docs/integration/identity-verification>.
+Examples in Node, Python, PHP, Ruby, and Go: <https://assistify.chat/docs/guides/identity-verification>.
 
 ## Server-rendered vs imperative identity
 
@@ -111,15 +111,12 @@ widget.events.on('identified', ({ verified, merged }) => {
 widget.user.identify({ email, userHash });
 ```
 
+When an unverified email is later proved (the visitor clicks the magic link, or OAuth/HMAC/agent attests it), the widget emits `'verified'` with `{ verifiedVia, merged }`.
+
 ## Content Security Policy
 
-Hosts must allow:
-
-```
-script-src  https://assistify.chat;
-connect-src https://assistify.chat wss://assistify.chat;
-img-src     https://assistify.chat data:;
-```
+The full directive set lives in the install docs and is kept current there:
+<https://assistify.chat/docs/install/script-tag#content-security-policy>.
 
 ## Docs
 

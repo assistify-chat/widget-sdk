@@ -1,22 +1,14 @@
 # @assistifychat/widget
 
-## 0.2.0
+## 1.0.0
 
-### Minor Changes
+First stable release. The 0.x versions were pre-launch previews; this is the supported baseline.
 
-- 591441e: Rework deferred-boot semantics, fix identity closure capture, extend context schema.
+Changes since 0.2.1:
 
-  - `autoload: false` now buffers `events.on/off`, `context.set/clear`, `user.identify`, `user.getVisitorId`, `destroy`, and `isReady` without injecting the loader script. Boot triggers are explicit: `load()`, `reset()`, `chat.open/close/toggle`.
-  - Identity supplied via `mount({ identity })` or `user.identify()` is read at script-injection time, so a deferred boot carries the latest `data-user-*` attributes — fixes the case where post-mount identity was lost to closure capture.
-  - Successive `user.identify()` calls shallow-merge top-level fields onto the last-known identity.
-  - `reset()` drops the SDK's cached identity and context so a subsequent `user.identify(newUser)` starts from a clean slate.
-  - `WidgetContext.order` adds `total`, `currency`, `itemCount`. `WidgetContext.customer` adds `segment`, `createdAt`, `totalSpent`, `currency`.
-  - Dispatch is now fully fire-and-forget — `dispatchAsync` is removed. Hosts observe completion through events (`ready`, `identified`, ...).
-  - `useAssistify()` warns in development when called with mismatched `widgetId` across components.
-  - Docs homepage URL points to `/docs/install/assistify-sdk`.
-
-## 0.1.1
-
-### Patch Changes
-
-- a1cf2c6: Move the SDK to its own repository. Internal restructure: drops the `@assistify/shared-types` workspace dependency, vendors the visitor-id storage helper in-package, and switches type-declarations to native tsdown emission. Public API is unchanged.
+- Removed the visitor-context API (`handle.context.set()/clear()`, `mount({ context })`, the `WidgetContext` type). It was never wired end to end. Per-visitor metadata has a single home: `user.identify({ customAttributes })`. Order and customer data is sourced server-side from the commerce integrations, keyed on a verified contact email.
+- `destroy()` is now reversible within the same page session: calling `mount()` again (or any boot-triggering method on the handle) boots the widget back up. Visitor storage is left intact, so the returning visitor is recognized. Previously a destroyed widget could only come back on the next page load.
+- New `verified` event (`{ verifiedVia, merged }`), emitted when a claimed email is proved: magic link clicked, OAuth provider verified, HMAC upgrade, or agent attestation. Distinct from `identified`, which fires on claim.
+- Corrected the `identified` payload contract: `merged` is `true` whenever the identification attached the session to a pre-existing contact, not only when two contact rows collapsed into one.
+- `reset()` followed by `user.identify()` is serialized: the identify is held until the post-reset session boots, so it lands on the new visitor.
+- Console guidance points at the real dashboard location (Widget → Settings → Credentials).
