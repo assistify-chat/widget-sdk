@@ -79,6 +79,8 @@ function warnInvalidWidgetId(widgetId: string): void {
 interface MountState {
   widgetId: string | null;
   baseUrl: string;
+  /** Per-embed: render the built-in floating launcher? `false` = panel-only. */
+  launcher: boolean;
   scriptEl: HTMLScriptElement | null;
   scriptStatus: 'idle' | 'pending' | 'loaded' | 'errored';
   scriptError: Error | null;
@@ -110,6 +112,7 @@ interface MountState {
 const state: MountState = {
   widgetId: null,
   baseUrl: DEFAULT_BASE_URL,
+  launcher: true,
   scriptEl: null,
   scriptStatus: 'idle',
   scriptError: null,
@@ -222,8 +225,12 @@ function ensureInstalled(): void {
     );
   }
 
-  (window as unknown as { ASSISTIFY_CONFIG?: { widgetId: string } }).ASSISTIFY_CONFIG = {
+  (window as unknown as {
+    ASSISTIFY_CONFIG?: { widgetId: string; launcher?: boolean };
+  }).ASSISTIFY_CONFIG = {
     widgetId: state.widgetId,
+    // Only emit when opting out.
+    ...(state.launcher ? {} : { launcher: false }),
   };
 
   const script = document.createElement('script');
@@ -234,6 +241,8 @@ function ensureInstalled(): void {
   script.crossOrigin = 'anonymous';
   script.setAttribute('data-assistify-loader', '');
   script.setAttribute('data-widget-id', state.widgetId);
+  // Also on the tag so the loader resolves it either way.
+  if (!state.launcher) script.setAttribute('data-launcher', 'false');
 
   if (state.currentIdentity) applyIdentityAttrs(script, state.currentIdentity);
 
@@ -373,6 +382,7 @@ export function mount(opts: MountOptions): WidgetHandle {
 
   state.widgetId = opts.widgetId;
   state.baseUrl = normaliseBaseUrl(opts.baseUrl);
+  state.launcher = opts.launcher !== false;
   state.destroyed = false;
   if (opts.identity) state.currentIdentity = mergeIdentity(state.currentIdentity, opts.identity);
 
@@ -514,6 +524,7 @@ export function mount(opts: MountOptions): WidgetHandle {
 export function __resetMountForTests(): void {
   state.widgetId = null;
   state.baseUrl = DEFAULT_BASE_URL;
+  state.launcher = true;
   state.scriptEl = null;
   state.scriptStatus = 'idle';
   state.scriptError = null;

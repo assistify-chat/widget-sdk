@@ -39,6 +39,14 @@ describe('<AssistifyScript />', () => {
     expect(out).toContain('data-user-hash="' + 'h'.repeat(64) + '"');
     expect(out).not.toMatch(/data-user-custom/);
   });
+
+  it('omits data-launcher by default and emits it only for launcher={false}', () => {
+    expect(html(<AssistifyScript widgetId="aaaaaaaaaaaaaaaa" />)).not.toMatch(/data-launcher/);
+    expect(html(<AssistifyScript widgetId="aaaaaaaaaaaaaaaa" launcher />)).not.toMatch(/data-launcher/);
+    expect(html(<AssistifyScript widgetId="aaaaaaaaaaaaaaaa" launcher={false} />)).toContain(
+      'data-launcher="false"',
+    );
+  });
 });
 
 describe('useAssistify', () => {

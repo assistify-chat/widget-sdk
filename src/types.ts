@@ -1,9 +1,8 @@
 /**
  * Public SDK type surface.
  *
- * Types live here; the SDK is the single source of truth for its own public
- * contract. The widget runtime served from assistify.chat consumes the same
- * shapes via its own internal copy.
+ * The identity and event payload types mirror the widget's wire format, so keep
+ * both sides in sync when a shape changes.
  */
 
 /** JSON-safe value type for dynamic data fields (used by `customAttributes`). */
@@ -143,6 +142,20 @@ export interface MountOptions {
    * @default true
    */
   autoload?: boolean;
+
+  /**
+   * Render the built-in floating launcher? Set to `false` for a panel-only
+   * embed: nothing shows until you open it, and closing hides the panel with no
+   * bubble left behind. Drive it from your own UI with `widget.chat.open()`.
+   *
+   * @default true
+   * @example
+   * ```ts
+   * const widget = mount({ widgetId: 'WIDGET_ID', launcher: false });
+   * myButton.addEventListener('click', () => widget.chat.open());
+   * ```
+   */
+  launcher?: boolean;
 
   /**
    * Visitor identity. Every field except `customAttributes` is forwarded to

@@ -15,6 +15,14 @@ interface AssistifyScriptProps {
   widgetId: string;
   baseUrl?: string;
   /**
+   * Render the built-in floating launcher? `false` mounts the widget
+   * panel-only. Drive it with `useAssistify().chat.open()` from your own UI.
+   * See {@link MountOptions.launcher}.
+   *
+   * @default true
+   */
+  launcher?: boolean;
+  /**
    * @remarks
    * Every identity field except `customAttributes` is forwarded via
    * `data-user-*` attributes. To deliver `customAttributes`, follow up with
@@ -43,11 +51,13 @@ interface AssistifyScriptProps {
 export function AssistifyScript({
   widgetId,
   baseUrl = DEFAULT_BASE_URL,
+  launcher,
   identity,
 }: AssistifyScriptProps): React.JSX.Element {
   const src = `${baseUrl.replace(/\/$/, '')}/widget/widget.js`;
   const attrs: Record<string, string | undefined> = {
     'data-widget-id': widgetId,
+    'data-launcher': launcher === false ? 'false' : undefined,
     'data-user-email': identity?.email,
     'data-user-external-id': identity?.externalId,
     'data-user-discord-id': identity?.discordId,

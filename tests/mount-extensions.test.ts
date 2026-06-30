@@ -71,6 +71,32 @@ describe('mount() script attributes', () => {
   });
 });
 
+describe('mount() launcher option', () => {
+  const readConfig = () =>
+    (window as unknown as { ASSISTIFY_CONFIG?: { launcher?: boolean } }).ASSISTIFY_CONFIG;
+
+  it('defaults to a launcher: no data-launcher attr, no launcher in ASSISTIFY_CONFIG', () => {
+    mount({ widgetId: 'aaaaaaaaaaaaaaaa' });
+    const script = document.querySelector<HTMLScriptElement>('script[src*="/widget/widget.js"]')!;
+    expect(script.hasAttribute('data-launcher')).toBe(false);
+    expect(readConfig()?.launcher).toBeUndefined();
+  });
+
+  it('launcher: false marks the script and ASSISTIFY_CONFIG for panel-only mode', () => {
+    mount({ widgetId: 'aaaaaaaaaaaaaaaa', launcher: false });
+    const script = document.querySelector<HTMLScriptElement>('script[src*="/widget/widget.js"]')!;
+    expect(script.getAttribute('data-launcher')).toBe('false');
+    expect(readConfig()?.launcher).toBe(false);
+  });
+
+  it('launcher: true is treated as the default (no opt-out marker)', () => {
+    mount({ widgetId: 'aaaaaaaaaaaaaaaa', launcher: true });
+    const script = document.querySelector<HTMLScriptElement>('script[src*="/widget/widget.js"]')!;
+    expect(script.hasAttribute('data-launcher')).toBe(false);
+    expect(readConfig()?.launcher).toBeUndefined();
+  });
+});
+
 describe('mount() identity data-attrs', () => {
   it('writes every supported identity field to data-attrs', () => {
     mount({
