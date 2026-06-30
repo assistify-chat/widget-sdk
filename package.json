@@ -1,6 +1,6 @@
 {
   "name": "@assistifychat/widget",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "Embed the Assistify chat widget on your website with full TypeScript support",
   "type": "module",
   "main": "./dist/index.js",
